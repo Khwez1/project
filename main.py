@@ -1,5 +1,10 @@
 import mysql.connector as mysql, sys, logging
 
+from database import Database
+from customer import Customer
+from package import Package
+from subscription import Subscription
+
 logging.basicConfig(level="INFO")
 
 def is_float(value):
@@ -8,20 +13,6 @@ def is_float(value):
         return True
     except ValueError:
         return False
-
-def customer_exists(connection, customer_id):
-    cursor = connection.cursor()
-    cursor.execute("SELECT 1 FROM customers WHERE customer_id = %s", (customer_id,))
-    result = cursor.fetchone()
-    cursor.close()
-    return result is not None
-
-def package_exists(connection, package_id):
-    cursor = connection.cursor()
-    cursor.execute("SELECT 1 FROM packages WHERE package_id = %s", (package_id,))
-    result = cursor.fetchone()
-    cursor.close()
-    return result is not None
 
 def get_input(prompt, validate=None, error_msg="Invalid input, try again."):
     """
@@ -50,7 +41,7 @@ def confirm(prompt="Save this? (y/n): "):
             return False
         print("Please type y or n.\n")
 
-def add_package_menu(connection):
+def add_package_menu(package):
     print("Preparing a new package... (type 'cancel' at any prompt to go back)\r\n")
 
     package_name = get_input("Please input package name: ")
@@ -84,21 +75,13 @@ def add_package_menu(connection):
         return
 
     try:
-        # SQL insert goes here
-        print(f"Package added successfully! Package ID: <lastrowid here>\n")
-    except mysql.connector.Error as e:
+        package.register_package(package_name, description, monthly_price)
+    except mysql.Error as e:
+        logging.error(e)
         print("Something went wrong saving to the database. Please try again.\n")
-        connection.rollback()
+        package.db.connection.rollback()
 
-def view_packages(connection):
-    """SQL logic to select * packages goes here"""
-    pass
-
-def view_customers(connection):
-    """SQL logic to select * packages goes here"""
-    pass
-
-def register_customers_menu(connection):
+def register_customers_menu(customer):
     print("Welcome to the register customers menu\r\n")
 
     customer_name = get_input("Please input customer's name:")
@@ -122,18 +105,18 @@ def register_customers_menu(connection):
         return
 
     try:
-        # SQL insert goes here
-        print(f"Customer added successfully! Customer ID: <lastrowid here>\n")
-    except mysql.connector.Error as e:
+        customer.register_customer(customer_name, phone_number, email_address)
+    except mysql.Error as e:
+        logging.error(e)
         print("Something went wrong saving to the database. Please try again.\n")
-        connection.rollback()
+        customer.db.connection.rollback()
 
-def subscribe_customers_menu(connection):
+def subscribe_customers_menu(customer, package, subscription):
     print("Welcome to the subscribe customers menu\r\n")
 
     customer_id = get_input(
         "Please input customer_ID:",
-        validate=lambda v: v.isdigit() and customer_exists(connection, v),
+        validate=lambda v: v.isdigit() and customer.customer_exists(v),
         error_msg="That customer ID doesn't exist. Check View Customers and try again.",
     )
     if customer_id is None:
@@ -142,7 +125,7 @@ def subscribe_customers_menu(connection):
 
     package_id = get_input(
         "Please input package_ID",
-        validate=lambda v: v.isdigit() and package_exists(connection, v),
+        validate=lambda v: v.isdigit() and package.package_exists(v),
         error_msg="That package ID doesn't exist. Check View Packages and try again."
     )
     if package_id is None:
@@ -153,15 +136,13 @@ def subscribe_customers_menu(connection):
     if not confirm():
         print("Not saved. Returning to menu.\n")
         return
-    
+
     try:
-        # SQL insert goes here
-        print(
-            f"Customer has been subscribed successfully! Subscribe ID: <lastrowid here>\n"
-        )
-    except mysql.connector.Error as e:
+        subscription.subscribe_customer(customer_id, package_id)
+    except mysql.Error as e:
+        logging.error(e)
         print("Something went wrong saving to the database. Please try again.\n")
-        connection.rollback()
+        subscription.db.connection.rollback()
 
 
 class OptionException(Exception):
@@ -169,12 +150,11 @@ class OptionException(Exception):
     pass
 
 def main():
-    connection = mysql.connect(
-        host="localhost",
-        user="root",
-        password="Oblivi0n",
-        database="isp_subscription_system",
-    )
+    db = Database()
+    customer = Customer(db)
+    package = Package(db)
+    subscription = Subscription(db, customer, package)
+
     print("Welcome to Backspace Technologies Subscription System")
     try:
         while True:
@@ -199,24 +179,25 @@ def main():
                 continue
 
             if choice == 1:
-                add_package_menu(connection)
+                add_package_menu(package)
             elif choice == 2:
-                view_packages(connection)
+                package.view_packages()
             elif choice == 3:
-                register_customers_menu(connection)
+                register_customers_menu(customer)
             elif choice == 4:
-                view_customers(connection)
+                customer.view_customers()
             elif choice == 5:
-                subscribe_customers_menu(connection)
+                subscribe_customers_menu(customer, package, subscription)
             elif choice == 6:
                 print("Exiting program... Goodbye!")
-                connection.close()
+                db.close()
                 sys.exit(0)
             else:
                 print("Please select a valid option (1-6).\n")
+                
     except KeyboardInterrupt:
         print("\n\nInterrupted. Exiting program... Goodgbye!")
-        connection.close()
+        db.close()
         sys.exit(0)
 
 if __name__ == "__main__":

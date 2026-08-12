@@ -2,7 +2,12 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 import main as main_module
-from main import is_float, customer_exists, package_exists, get_input, confirm, OptionException
+from main import is_float, get_input, confirm, OptionException
+
+# NOTE: customer_exists() and package_exists() no longer live in main.py —
+# that existence-checking logic moved to Customer.customer_exists() and
+# Package.package_exists() as part of the OOP refactor. Tests for that
+# behaviour belong alongside customer.py / package.py, not here.
 
 
 class TestIsFloat(unittest.TestCase):
@@ -17,50 +22,6 @@ class TestIsFloat(unittest.TestCase):
 
     def test_empty_string(self):
         self.assertFalse(is_float(""))
-
-
-class TestCustomerExists(unittest.TestCase):
-    def test_customer_found(self):
-        mock_connection = MagicMock()
-        mock_cursor = mock_connection.cursor.return_value
-        mock_cursor.fetchone.return_value = (1,)
-
-        result = customer_exists(mock_connection, "5")
-
-        self.assertTrue(result)
-        mock_cursor.execute.assert_called_once_with(
-            "SELECT 1 FROM customers WHERE customer_id = %s", ("5",)
-        )
-        mock_cursor.close.assert_called_once()
-
-    def test_customer_not_found(self):
-        mock_connection = MagicMock()
-        mock_cursor = mock_connection.cursor.return_value
-        mock_cursor.fetchone.return_value = None
-
-        result = customer_exists(mock_connection, "999")
-
-        self.assertFalse(result)
-
-
-class TestPackageExists(unittest.TestCase):
-    def test_package_found(self):
-        mock_connection = MagicMock()
-        mock_cursor = mock_connection.cursor.return_value
-        mock_cursor.fetchone.return_value = (1,)
-
-        result = package_exists(mock_connection, "2")
-
-        self.assertTrue(result)
-
-    def test_package_not_found(self):
-        mock_connection = MagicMock()
-        mock_cursor = mock_connection.cursor.return_value
-        mock_cursor.fetchone.return_value = None
-
-        result = package_exists(mock_connection, "999")
-
-        self.assertFalse(result)
 
 
 class TestGetInput(unittest.TestCase):
@@ -119,22 +80,31 @@ class TestMainRouting(unittest.TestCase):
             with patch("builtins.input", side_effect=inputs):
                 main_module.main()
 
-    @patch("main.mysql")
+    @patch("main.Subscription")
+    @patch("main.Package")
+    @patch("main.Customer")
+    @patch("main.Database")
     @patch("main.subscribe_customers_menu")
-    @patch("main.view_customers")
     @patch("main.register_customers_menu")
-    @patch("main.view_packages")
     @patch("main.add_package_menu")
     def test_routes_to_correct_submenu(
-        self, mock_add_package, mock_view_packages, mock_register,
-        mock_view_customers, mock_subscribe, mock_mysql
+        self, mock_add_package, mock_register, mock_subscribe,
+        mock_database_cls, mock_customer_cls, mock_package_cls, mock_subscription_cls
     ):
-        mock_mysql.connect.return_value = MagicMock()
+        mock_database_cls.return_value = MagicMock()
+        mock_customer_instance = MagicMock()
+        mock_package_instance = MagicMock()
+        mock_customer_cls.return_value = mock_customer_instance
+        mock_package_cls.return_value = mock_package_instance
+
+        # Choices 1, 3, 5 route to the standalone menu functions.
+        # Choices 2, 4 now call view methods directly on the injected
+        # Customer/Package instances instead of a main.py wrapper function.
         routing_map = {
             "1": mock_add_package,
-            "2": mock_view_packages,
+            "2": mock_package_instance.view_packages,
             "3": mock_register,
-            "4": mock_view_customers,
+            "4": mock_customer_instance.view_customers,
             "5": mock_subscribe,
         }
         all_mocks = list(routing_map.values())
@@ -149,40 +119,40 @@ class TestMainRouting(unittest.TestCase):
                     if m is not expected_mock:
                         m.assert_not_called()
 
-    @patch("main.mysql")
-    def test_choice_6_exits_and_closes_connection(self, mock_mysql):
-        mock_connection = MagicMock()
-        mock_mysql.connect.return_value = mock_connection
+    @patch("main.Database")
+    def test_choice_6_exits_and_closes_connection(self, mock_database_cls):
+        mock_db_instance = MagicMock()
+        mock_database_cls.return_value = mock_db_instance
 
         self._run_main_with_inputs(["6"])
 
-        mock_connection.close.assert_called_once()
+        mock_db_instance.close.assert_called_once()
 
-    @patch("main.mysql")
-    def test_non_numeric_input_does_not_crash_and_retries(self, mock_mysql):
-        mock_mysql.connect.return_value = MagicMock()
+    @patch("main.Database")
+    def test_non_numeric_input_does_not_crash_and_retries(self, mock_database_cls):
+        mock_database_cls.return_value = MagicMock()
 
         # "abc" should be rejected and re-prompted, not crash the program
         self._run_main_with_inputs(["abc", "6"])
 
-    @patch("main.mysql")
-    def test_out_of_range_choice_raises_option_exception_and_retries(self, mock_mysql):
-        mock_mysql.connect.return_value = MagicMock()
+    @patch("main.Database")
+    def test_out_of_range_choice_raises_option_exception_and_retries(self, mock_database_cls):
+        mock_database_cls.return_value = MagicMock()
 
         # "9" is a valid number but out of the 1-6 range
         self._run_main_with_inputs(["9", "6"])
 
-    @patch("main.mysql")
-    def test_keyboard_interrupt_exits_cleanly_and_closes_connection(self, mock_mysql):
-        mock_connection = MagicMock()
-        mock_mysql.connect.return_value = mock_connection
+    @patch("main.Database")
+    def test_keyboard_interrupt_exits_cleanly_and_closes_connection(self, mock_database_cls):
+        mock_db_instance = MagicMock()
+        mock_database_cls.return_value = mock_db_instance
 
         # Simulate Ctrl+C happening while the program is waiting on input()
         with self.assertRaises(SystemExit):
             with patch("builtins.input", side_effect=KeyboardInterrupt):
                 main_module.main()
 
-        mock_connection.close.assert_called_once()
+        mock_db_instance.close.assert_called_once()
 
 if __name__ == "__main__":
     unittest.main()

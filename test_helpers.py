@@ -1,7 +1,12 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-from main import is_float, customer_exists, package_exists, get_input, confirm, OptionException
+from main import is_float, get_input, confirm, OptionException
+
+# NOTE: customer_exists() and package_exists() no longer live in main.py —
+# that existence-checking logic moved to Customer.customer_exists() and
+# Package.package_exists() as part of the OOP refactor. Tests for that
+# behaviour belong alongside customer.py / package.py, not here.
 
 
 class TestIsFloat(unittest.TestCase):
@@ -16,50 +21,6 @@ class TestIsFloat(unittest.TestCase):
 
     def test_empty_string(self):
         self.assertFalse(is_float(""))
-
-
-class TestCustomerExists(unittest.TestCase):
-    def test_customer_found(self):
-        mock_connection = MagicMock()
-        mock_cursor = mock_connection.cursor.return_value
-        mock_cursor.fetchone.return_value = (1,)
-
-        result = customer_exists(mock_connection, "5")
-
-        self.assertTrue(result)
-        mock_cursor.execute.assert_called_once_with(
-            "SELECT 1 FROM customers WHERE customer_id = %s", ("5",)
-        )
-        mock_cursor.close.assert_called_once()
-
-    def test_customer_not_found(self):
-        mock_connection = MagicMock()
-        mock_cursor = mock_connection.cursor.return_value
-        mock_cursor.fetchone.return_value = None
-
-        result = customer_exists(mock_connection, "999")
-
-        self.assertFalse(result)
-
-
-class TestPackageExists(unittest.TestCase):
-    def test_package_found(self):
-        mock_connection = MagicMock()
-        mock_cursor = mock_connection.cursor.return_value
-        mock_cursor.fetchone.return_value = (1,)
-
-        result = package_exists(mock_connection, "2")
-
-        self.assertTrue(result)
-
-    def test_package_not_found(self):
-        mock_connection = MagicMock()
-        mock_cursor = mock_connection.cursor.return_value
-        mock_cursor.fetchone.return_value = None
-
-        result = package_exists(mock_connection, "999")
-
-        self.assertFalse(result)
 
 
 class TestGetInput(unittest.TestCase):
