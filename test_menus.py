@@ -4,12 +4,6 @@ from unittest.mock import patch, MagicMock
 import main as main_module
 from main import is_float, get_input, confirm, OptionException
 
-# NOTE: customer_exists() and package_exists() no longer live in main.py —
-# that existence-checking logic moved to Customer.customer_exists() and
-# Package.package_exists() as part of the OOP refactor. Tests for that
-# behaviour belong alongside customer.py / package.py, not here.
-
-
 class TestIsFloat(unittest.TestCase):
     def test_valid_integer_string(self):
         self.assertTrue(is_float("599"))
@@ -81,6 +75,7 @@ class TestMainRouting(unittest.TestCase):
                 main_module.main()
 
     @patch("main.Subscription")
+    @patch("main.press_enter_to_continue")
     @patch("main.Package")
     @patch("main.Customer")
     @patch("main.Database")
@@ -89,8 +84,12 @@ class TestMainRouting(unittest.TestCase):
     @patch("main.add_package_menu")
     def test_routes_to_correct_submenu(
         self, mock_add_package, mock_register, mock_subscribe,
-        mock_database_cls, mock_customer_cls, mock_package_cls, mock_subscription_cls
+        mock_database_cls, mock_customer_cls, mock_package_cls, mock_subscription_cls,
+        mock_press_enter,
     ):
+        # press_enter_to_continue() is mocked out here since it calls input()
+        # itself (to pause on "Press Enter to continue...") — leaving it real
+        # would consume an extra value from each test's scripted input list.
         mock_database_cls.return_value = MagicMock()
         mock_customer_instance = MagicMock()
         mock_package_instance = MagicMock()
